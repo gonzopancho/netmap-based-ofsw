@@ -439,7 +439,7 @@ main(int argc, char **argv)
     printf("FT IP ToS: %02x\n", fl.entry[0].header.nw_tos);
     printf("FT ICMP: 0x%04x 0x%04x\n", fl.entry[0].header.tp_src, fl.entry[0].header.tp_dst);*/
 
-	struct pollfd pollfd[2];
+	struct pollfd pollfd[3];
 	int i, ch;
 	u_int burst = 1024, wait_link = 4;
 	struct my_ring me[3];
@@ -467,7 +467,7 @@ main(int argc, char **argv)
             else if (ifc == NULL)
                 ifc = optarg;
 			else
-				D("%s ignored, already have 2 interfaces",
+				D("%s ignored, already have 3 interfaces",
 					optarg);
 			break;
 		case 'v':
@@ -538,29 +538,41 @@ main(int argc, char **argv)
 	sleep(wait_link);
 	D("Ready to go, %s 0x%x/%d <-> %s 0x%x/%d <-> %s 0x%x/%d.",
 		me[0].ifname, me[0].queueid, me[0].nifp->ni_rx_rings,
-		me[1].ifname, me[1].queueid, me[1].nifp->ni_rx_rings
+		me[1].ifname, me[1].queueid, me[1].nifp->ni_rx_rings,
 		me[2].ifname, me[2].queueid, me[2].nifp->ni_rx_rings);
 
 	/* main loop */
 	signal(SIGINT, sigint_h);
 	while (!do_abort) {
-		int n0, n1, ret;
-		pollfd[0].events = pollfd[1].events = 0;
-		pollfd[0].revents = pollfd[1].revents = 0;
+		int n0, n1, n2, ret;
+		pollfd[0].events = pollfd[1].events = pollfd[2].events = 0;
+		pollfd[0].revents = pollfd[1].revents = pollfd[2].revents = 0;
 		n0 = pkt_queued(me, 0);
 		n1 = pkt_queued(me + 1, 0);
-		if (n0)
+		n2 = pkt_queued(me + 2, 0);
+		if (n0) {
 			pollfd[1].events |= POLLOUT;
+			pollfd[2].events |= POLLOUT;
+		}
 		else
 			pollfd[0].events |= POLLIN;
 		if (n1)
 			pollfd[0].events |= POLLOUT;
-		else
+		else {
 			pollfd[1].events |= POLLIN;
-		ret = poll(pollfd, 2, 2500);
+			pollfd[2].events |= POLLIN;
+		}
+        if (n2)
+			pollfd[0].events |= POLLOUT;
+		else {
+			pollfd[1].events |= POLLIN;
+			pollfd[2].events |= POLLIN;
+		}
+		ret = poll(pollfd, 3, 2500);
 		if (ret <= 0 || verbose)
 		    D("poll %s [0] ev %x %x rx %d@%d tx %d,"
-			     " [1] ev %x %x rx %d@%d tx %d",
+			     " [1] ev %x %x rx %d@%d tx %d,"
+			     " [2] ev %x %x rx %d@%d tx %d",
 				ret <= 0 ? "timeout" : "ok",
 				pollfd[0].events,
 				pollfd[0].revents,
@@ -571,7 +583,12 @@ main(int argc, char **argv)
 				pollfd[1].revents,
 				pkt_queued(me+1, 0),
 				me[1].rx->cur,
-				pkt_queued(me+1, 1)
+				pkt_queued(me+1, 1),
+				pollfd[2].events,
+				pollfd[2].revents,
+				pkt_queued(me+2, 0),
+				me[2].rx->cur,
+				pkt_queued(me+2, 1)
 			);
 		if (ret < 0)
 			continue;
@@ -583,6 +600,10 @@ main(int argc, char **argv)
 			D("error on fd1, rxcur %d@%d",
 				me[1].rx->avail, me[1].rx->cur);
 		}
+		if (pollfd[2].revents & POLLERR) {
+			D("error on fd1, rxcur %d@%d",
+				me[2].rx->avail, me[2].rx->cur);
+		}
 		if (pollfd[0].revents & POLLOUT) {
 			move(me + 1, me, burst, fl);
 			// XXX we don't need the ioctl */
@@ -593,8 +614,14 @@ main(int argc, char **argv)
 			// XXX we don't need the ioctl */
 			// ioctl(me[1].fd, NIOCTXSYNC, NULL);
 		}
+		if (pollfd[2].revents & POLLOUT) {
+			move(me, me + 2, burst, fl);
+			// XXX we don't need the ioctl */
+			// ioctl(me[1].fd, NIOCTXSYNC, NULL);
+		}
 	}
 	D("exiting");
+	netmap_close(me + 2);
 	netmap_close(me + 1);
 	netmap_close(me + 0);
 
