@@ -560,12 +560,10 @@ main(int argc, char **argv)
 			pollfd[0].events |= POLLOUT;
 		else {
 			pollfd[1].events |= POLLIN;
-			pollfd[2].events |= POLLIN;
 		}
         if (n2)
 			pollfd[0].events |= POLLOUT;
 		else {
-			pollfd[1].events |= POLLIN;
 			pollfd[2].events |= POLLIN;
 		}
 		ret = poll(pollfd, 3, 2500);
@@ -601,20 +599,23 @@ main(int argc, char **argv)
 				me[1].rx->avail, me[1].rx->cur);
 		}
 		if (pollfd[2].revents & POLLERR) {
-			D("error on fd1, rxcur %d@%d",
+			D("error on fd2, rxcur %d@%d",
 				me[2].rx->avail, me[2].rx->cur);
 		}
 		if (pollfd[0].revents & POLLOUT) {
+            D("zhangjie 0\n");
 			move(me + 1, me, burst, fl);
 			// XXX we don't need the ioctl */
 			// ioctl(me[0].fd, NIOCTXSYNC, NULL);
 		}
 		if (pollfd[1].revents & POLLOUT) {
+		    D("zhangjie 1\n");
 			move(me, me + 1, burst, fl);
 			// XXX we don't need the ioctl */
 			// ioctl(me[1].fd, NIOCTXSYNC, NULL);
 		}
 		if (pollfd[2].revents & POLLOUT) {
+		    D("zhangjie 2\n");
 			move(me, me + 2, burst, fl);
 			// XXX we don't need the ioctl */
 			// ioctl(me[1].fd, NIOCTXSYNC, NULL);
